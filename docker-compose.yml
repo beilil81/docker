@@ -1,0 +1,122 @@
+version: '3'
+services:
+  discovery:
+    image: registry.gitlab.com/ing.elouardi/docker-images-builder/eurika-image:0.0.1
+    ports:
+    - "8761:8761"
+    expose:
+    - "8761"
+
+  zipkin:
+    image: openzipkin/zipkin
+    ports:
+    - "9411:9411"
+
+  collaborator:
+    image: registry.gitlab.com/ing.elouardi/docker-images-builder/collaborator-matrix-image:0.0.1 
+    ports:
+      - "8082:8082"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin:9411/
+
+  qcmmatrix:
+    image:  registry.gitlab.com/ing.elouardi/docker-images-builder/qcm-matrix-image:0.0.1
+    ports:
+      - "8083:8090"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin:9411/
+
+  eventmatrix:
+    image:  registry.gitlab.com/ing.elouardi/docker-images-builder/event-matrix-image:0.0.1
+    ports:
+      - "8087:8097"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin:9411/
+
+  api-management:
+    image: registry.gitlab.com/ing.elouardi/docker-images-builder/api-management-image:0.0.1 
+    ports:
+      - "9000:9000"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin:9411/
+      GRAPHIQL_ENDPOINT_GRAPHQL: /graphql
+      GRAPHIQL_ENDPOINT_SUBSCRIPTION: /subscriptions
+      GRAPHIQL_STATIC_BASEPATH: /
+      SPRING_REDIS_HOST: db
+    links:
+      - "db:redis"
+
+  gateway:
+    image: registry.gitlab.com/ing.elouardi/docker-images-builder/zull-image:0.0.1 
+    ports:
+       - "8762:8762" 
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin:9411/
+      ZUUL_ROUTES_api-management_URL: http://api-management:9000
+      SPRING_REDIS_HOST: db
+    links:
+      - "db:redis"
+  db:
+    image: "redis:alpine"
+    hostname: redis
+    ports:
+     - "6379:6379"
+  
+  redis-commander:
+    container_name: redis-commander
+    hostname: redis-commander
+    image: rediscommander/redis-commander:latest
+    restart: always
+    environment:
+    - REDIS_HOSTS=local:db:6379
+    ports:
+    - "9081:8081"
+    
+  matrix:
+    image:  registry.gitlab.com/ing.elouardi/docker-images-builder/matrix-image:0.0.1
+    ports:
+      - "8099:8099"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin:9411/
+      READ_DATASOURCE_JDBC-URL: jdbc:mysql://mysql-master:3306/matrixdb?createDatabaseIfNotExist=true
+      READ_DATASOURCE_USERNAME: root
+      READ_DATASOURCE_PASSWORD: root 
+      WRITE_DATASOURCE_JDBC-URL: jdbc:mysql://mysql-master:3306/matrixdb?createDatabaseIfNotExist=true
+      WRITE_DATASOURCE_USERNAME: root
+      WRITE_DATASOURCE_PASSWORD: root 
+      SPRING.RABBITMQ.HOST: rabbitmq
+    depends_on:
+      - mysql-master
+
+  rabbitmq:
+    image: rabbitmq:3.5.3-management
+    ports:
+      - 5672:5672
+      - 15672:15672
+
+  mysql-master:
+    image: 'bitnami/mysql:8.0'
+    ports:
+      - "6000:3306"
+    volumes:
+      - 'mysql_master_data:/bitnami/mysql/data'
+    environment:
+      - MYSQL_REPLICATION_MODE=master
+      - MYSQL_REPLICATION_USER=repl_user
+      - MYSQL_USER=matrixuser
+      - MYSQL_DATABASE=matrixdb
+      # ALLOW_EMPTY_PASSWORD is recommended only for development.
+      - ALLOW_EMPTY_PASSWORD=yes
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_PASSWORD=admin
+
+      
+
+volumes:
+  mysql_master_data:     
